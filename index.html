@@ -83,7 +83,6 @@ html {scroll-padding-bottom:calc(171px + env(safe-area-inset-bottom, 0px))}
   font-size:.94rem;
 }
 .timer-dock[data-phase="rest"] .timer-readout {background:#9f2629}
-.timer-dock[data-phase="done"] .timer-readout {background:#49554c}
 .timer-remaining {white-space:nowrap}
 .timer-seconds {font-size:1.48rem;line-height:1;font-variant-numeric:tabular-nums}
 </style></head>
@@ -91,7 +90,7 @@ html {scroll-padding-bottom:calc(171px + env(safe-area-inset-bottom, 0px))}
 <h1>Тренировка с анимациями</h1>
 <p class="lead">Функциональная тренировка на всё тело с акцентом на баланс, координацию и контроль корпуса. Цель — устойчиво переносить вес и сохранять контроль в поворотах, выпадах и упорах.</p>
 <p class="note">Основная часть по рекомендованным интервалам · 35:51. Понадобятся две гантели, коврик и небольшой мяч для последнего упражнения. В клипах показана исходная техника, поэтому инвентарь на видео может отличаться. Анимации повторяются автоматически. <a href="versions/v3.html">Скачать полную версию с видео</a>.</p>
-<p class="note">Перед каждым упражнением выбери в таймере секунды работы и отдыха, затем нажми «Старт». Для одностороннего упражнения запускай таймер отдельно на каждую сторону.</p>
+<p class="note">Выбери длительность работы и нажми «Старт». После каждого отдыха следующий рабочий интервал начнётся автоматически. Чтобы остановить цикл и выбрать новый режим, нажми «Сброс».</p>
 <p class="note"><a href="versions/">Предыдущие версии</a></p>
 <nav aria-label="Блоки тренировки"><a href="#block-1">1. Стоя · баланс</a><a href="#block-2">2. Стоя · силовой блок</a><a href="#block-3">3. Связки с гантелью</a><a href="#block-4">4. На коленях и в упоре</a><a href="#block-5">5. Сидя</a><a href="#block-6">6. Лёжа</a></nav>
 <section id="block-1"><h2>Блок 1. Стоя · баланс, перенос веса и повороты · ≈ 06:45</h2><p class="block-goal">Тренируем баланс на одной ноге, перенос веса и контроль корпуса при поворотах.</p><article id="ex-18">
@@ -470,14 +469,13 @@ html {scroll-padding-bottom:calc(171px + env(safe-area-inset-bottom, 0px))}
   let ticker = null;
 
   function render() {
-    panel.dataset.phase = status === 'done' ? 'done' : phase;
+    panel.dataset.phase = phase;
     seconds.textContent = String(Math.ceil(remaining / 1000));
     const phaseName = phase === 'work' ? 'Работа' : 'Отдых';
-    label.textContent = status === 'done' ? 'Готово' :
-      status === 'paused' ? phaseName + ' · пауза' : phaseName;
+    label.textContent = status === 'paused' ? phaseName + ' · пауза' : phaseName;
     toggle.textContent = status === 'running' ? 'Пауза' :
       status === 'paused' ? 'Продолжить' : 'Старт';
-    skip.disabled = status === 'ready' || status === 'done';
+    skip.disabled = status === 'ready';
     skip.textContent = phase === 'work' ? 'К отдыху' : 'К работе';
     reset.disabled = status === 'ready';
     for (const preset of presets) {
@@ -495,16 +493,22 @@ html {scroll-padding-bottom:calc(171px + env(safe-area-inset-bottom, 0px))}
     if (status !== 'running') return;
 
     const now = Date.now();
-    if (phase === 'work' && now >= deadline) {
-      phase = 'rest';
-      deadline += restDuration;
+    if (now >= deadline) {
+      // Jump to the correct phase even when the tablet sleeps or the tab is hidden.
+      let overdue = (now - deadline) % (workDuration + restDuration);
+      phase = phase === 'work' ? 'rest' : 'work';
+      const firstDuration = phase === 'work' ? workDuration : restDuration;
+
+      if (overdue >= firstDuration) {
+        overdue -= firstDuration;
+        phase = phase === 'work' ? 'rest' : 'work';
+      }
+
+      const duration = phase === 'work' ? workDuration : restDuration;
+      deadline = now + duration - overdue;
     }
 
     remaining = Math.max(0, deadline - now);
-    if (remaining === 0) {
-      status = 'done';
-      stopTicker();
-    }
     render();
   }
 
@@ -527,21 +531,18 @@ html {scroll-padding-bottom:calc(171px + env(safe-area-inset-bottom, 0px))}
   toggle.addEventListener('click', () => {
     if (status === 'running') {
       tick();
-      if (status === 'done') return;
       status = 'paused';
       stopTicker();
       render();
       return;
     }
 
-    if (status === 'done') prepare();
     start();
   });
 
   skip.addEventListener('click', () => {
     if (status !== 'running' && status !== 'paused') return;
     tick();
-    if (status === 'done') return;
 
     phase = phase === 'work' ? 'rest' : 'work';
     remaining = phase === 'work' ? workDuration : restDuration;
